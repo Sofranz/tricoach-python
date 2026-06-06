@@ -1,0 +1,58 @@
+# deploy.yml
+#
+# Auto-deploys the Python backend to the Oracle VCN VM whenever code
+# is pushed to the main branch.
+#
+# How it works:
+#   1. SCPs main.py and requirements.txt to the VM
+#   2. SSHes in and runs pip install (in case deps changed)
+#   3. Restarts the systemd service so gunicorn picks up the new code
+#
+# Required GitHub Secrets:
+#   SSH_HOST        — 145.241.211.101
+#   SSH_USER        — ubuntu
+#   SSH_PRIVATE_KEY — the contents of Oracle/ssh-key-2026-06-06.key
+#
+# NOTE: The SSH_PRIVATE_KEY must be added as a repo secret, NOT in the
+# repo files. Go to Settings → Secrets and variables → Actions → New secret.
+
+name: Deploy to Oracle VCN
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'main.py'
+      - 'requirements.txt'
+      - '.github/workflows/deploy.yml'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Copy files to server
+        run: |
+          scp main.py ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:~/tricoach-backend/
+          scp requirements.txt ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:~/tricoach-backend/
+
+      - name: Install dependencies and restart
+        run: |
+          ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
+            "cd ~/tricoach-backend && \
+             ~/tricoach-backend/venv/bin/pip install -r requirements.txt && \
+             sudo systemctl restart tricoach-backend"
+
+      - name: Verify deployment
+        run: |
+          sleep 3
+          curl -s --connect-timeout 10 http://${{ secrets.SSH_HOST }}/health
