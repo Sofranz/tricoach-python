@@ -1,0 +1,22 @@
+# tricoach-backend.service
+#
+# Systemd service unit for the TriCoach Garmin Sync backend.
+# Managed by GitHub Actions auto-deploy (push to main).
+#
+# The --timeout 600 is critical: Garmin login can take >30s when
+# retrying after rate limiting. Default 30s timeout would kill the
+# worker mid-retry.
+
+[Unit]
+Description=TriCoach Garmin Sync Backend
+After=network.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/tricoach-backend
+ExecStart=/home/ubuntu/tricoach-backend/venv/bin/gunicorn -w 2 -b 0.0.0.0:8000 --timeout 600 main:app
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
